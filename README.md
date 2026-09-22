@@ -1,0 +1,3 @@
+# Buddy System
+
+Trigger build
