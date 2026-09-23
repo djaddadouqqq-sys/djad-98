@@ -15,13 +15,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Auto-extract any .zip archives in the repo root
+        run: |
+          set -e
+          shopt -s nullglob
+          for z in *.zip; do
+            echo "فكّ ضغط: $z"
+            mkdir -p "extracted_$(basename "$z" .zip)"
+            unzip -q -o "$z" -d "extracted_$(basename "$z" .zip)"
+          done
+
       - name: Locate the Flutter project (pubspec.yaml)
         id: locate
         run: |
           set -e
-          PUBSPEC_PATH=$(find . -maxdepth 4 -iname "pubspec.yaml" -not -path "*/build/*" | head -n 1)
+          PUBSPEC_PATH=$(find . -maxdepth 6 -iname "pubspec.yaml" -not -path "*/build/*" | head -n 1)
           if [ -z "$PUBSPEC_PATH" ]; then
-            echo "::error::لم يُعثر على pubspec.yaml في المستودع."
+            echo "::error::لم يُعثر على pubspec.yaml حتى بعد فكّ ضغط أي ZIP موجود."
             exit 1
           fi
           PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
@@ -124,4 +134,34 @@ jobs:
 
       - name: ./gradlew :app:assembleDebug
         working-directory: ${{ steps.locate.outputs.project_dir }}/android
-        run: ./gra
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: flutter build apk --debug
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        run: flutter build apk --debug
+
+      - name: Verify APK was actually produced
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        run: |
+          set -e
+          APK_PATH="build/app/outputs/flutter-apk/app-debug.apk"
+          test -f "$APK_PATH"
+          echo "✓ APK حقيقي موجود: $APK_PATH"
+          ls -la "$APK_PATH"
+
+      - name: Upload APK as downloadable artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buddy-system-debug-apk
+          path: ${{ steps.locate.outputs.project_dir }}/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs
+          path: |
+            ${{ steps.locate.outputs.project_dir }}/build/
+          retention-days: 7
