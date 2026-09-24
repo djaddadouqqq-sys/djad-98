@@ -39,6 +39,15 @@ jobs:
           channel: stable
           cache: true
       
+      - name: Remove incompatible workmanager dependency
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: |
+          if [ -f "pubspec.yaml" ]; then
+            sed -i '/workmanager/d' pubspec.yaml
+            echo "=== pubspec.yaml after removal ==="
+            grep -i workmanager pubspec.yaml || echo "✅ workmanager removed"
+          fi
+      
       - name: pub get
         working-directory: ${{ steps.find.outputs.dir }}
         run: flutter pub get
