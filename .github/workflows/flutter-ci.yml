@@ -56,11 +56,11 @@ jobs:
         working-directory: ${{ steps.find.outputs.dir }}
         run: flutter test || true
       
-      - name: Regenerate android
+      - name: Regenerate android (preserve lib/)
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
           rm -rf android
-          flutter create --platforms=android --overwrite --org com.buddysystem .
+          flutter create --platforms=android --org com.buddysystem .
       
       - name: Build APK
         working-directory: ${{ steps.find.outputs.dir }}
