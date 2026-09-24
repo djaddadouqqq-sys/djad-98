@@ -56,11 +56,45 @@ jobs:
         working-directory: ${{ steps.find.outputs.dir }}
         run: flutter test || true
       
+      - name: Remove old android folder
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: rm -rf android
+      
       - name: Regenerate android (preserve lib/)
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
-          rm -rf android
           flutter create --platforms=android --org com.buddysystem .
+      
+      - name: Fix namespace and applicationId
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: |
+          FILE="android/app/build.gradle"
+          if [ -f "$FILE" ]; then
+            sed -i 's/namespace ".*"/namespace "com.buddysystem.buddy_system"/' "$FILE" || true
+            sed -i 's/applicationId ".*"/applicationId "com.buddysystem.buddy_system"/' "$FILE" || true
+            sed -i 's/minSdkVersion .*/minSdkVersion 23/' "$FILE" || true
+            sed -i 's/minSdk .*/minSdk 23/' "$FILE" || true
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' "$FILE" || true
+            sed -i 's/compileSdk .*/compileSdk 34/' "$FILE" || true
+            echo "=== build.gradle after fix ==="
+            cat "$FILE"
+          fi
+      
+      - name: Fix gradle.properties
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: |
+          PROPS="android/gradle.properties"
+          if [ -f "$PROPS" ]; then
+            grep -q "android.useAndroidX" "$PROPS" || echo "android.useAndroidX=true" >> "$PROPS"
+            grep -q "android.enableJetifier" "$PROPS" || echo "android.enableJetifier=true" >> "$PROPS"
+            cat "$PROPS"
+          fi
+      
+      - name: Clean Gradle
+        working-directory: ${{ steps.find.outputs.dir }}/android
+        run: |
+          chmod +x gradlew || true
+          ./gradlew clean || true
       
       - name: Build APK
         working-directory: ${{ steps.find.outputs.dir }}
