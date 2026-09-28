@@ -29,6 +29,20 @@ jobs:
           echo "dir=$(dirname $P)" >> $GITHUB_OUTPUT
           echo "Found: $P"
       
+      - name: Override lib/ with latest from repo root
+        run: |
+          PROJECT_DIR="${{ steps.find.outputs.dir }}"
+          if [ -d "lib" ]; then
+            echo "=== Overriding $PROJECT_DIR/lib with repo-root lib/ ==="
+            rm -rf "$PROJECT_DIR/lib"
+            cp -r lib "$PROJECT_DIR/lib"
+            echo "=== New lib/ contents ==="
+            ls -la "$PROJECT_DIR/lib/"
+            find "$PROJECT_DIR/lib" -type f -name "*.dart" | head -20
+          else
+            echo "=== No lib/ in repo root — using ZIP's lib/ ==="
+          fi
+      
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -44,8 +58,7 @@ jobs:
         run: |
           if [ -f "pubspec.yaml" ]; then
             sed -i '/workmanager/d' pubspec.yaml
-            echo "=== pubspec.yaml after removal ==="
-            grep -i workmanager pubspec.yaml || echo "✅ workmanager removed"
+            echo "=== workmanager removed ==="
           fi
       
       - name: pub get
@@ -85,18 +98,11 @@ jobs:
             sed -i 's/minSdk .*/minSdk 23/' "$FILE" || true
             sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' "$FILE" || true
             sed -i 's/compileSdk .*/compileSdk 34/' "$FILE" || true
-            echo "=== build.gradle after fix ==="
-            cat "$FILE"
           fi
-      
-      - name: Fix gradle.properties
-        working-directory: ${{ steps.find.outputs.dir }}
-        run: |
           PROPS="android/gradle.properties"
           if [ -f "$PROPS" ]; then
             grep -q "android.useAndroidX" "$PROPS" || echo "android.useAndroidX=true" >> "$PROPS"
             grep -q "android.enableJetifier" "$PROPS" || echo "android.enableJetifier=true" >> "$PROPS"
-            cat "$PROPS"
           fi
       
       - name: Clean Gradle
