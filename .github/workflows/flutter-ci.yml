@@ -20,6 +20,7 @@ jobs:
               unzip -o "$f" -d extracted/ || true
             fi
           done
+          echo "=== Extracted ==="
           ls -la extracted/
       
       - name: Find Flutter project
@@ -28,19 +29,30 @@ jobs:
           P=$(find extracted -name "pubspec.yaml" | head -1)
           echo "dir=$(dirname $P)" >> $GITHUB_OUTPUT
           echo "Found: $P"
+          ls -la "$(dirname $P)/"
       
-      - name: Override lib/ with latest from repo root
+      - name: Backup original lib
         run: |
           PROJECT_DIR="${{ steps.find.outputs.dir }}"
-          if [ -d "lib" ]; then
-            echo "=== Overriding $PROJECT_DIR/lib with repo-root lib/ ==="
+          if [ -d "$PROJECT_DIR/lib" ]; then
+            cp -r "$PROJECT_DIR/lib" "$PROJECT_DIR/lib_original_backup"
+            echo "=== Original lib backed up ==="
+            ls -la "$PROJECT_DIR/lib/"
+          fi
+      
+      - name: Override lib with repo root (only if valid)
+        run: |
+          PROJECT_DIR="${{ steps.find.outputs.dir }}"
+          if [ -d "lib" ] && [ -f "lib/main.dart" ]; then
+            echo "=== Overriding $PROJECT_DIR/lib with repo root lib/ ==="
             rm -rf "$PROJECT_DIR/lib"
             cp -r lib "$PROJECT_DIR/lib"
             echo "=== New lib/ contents ==="
             ls -la "$PROJECT_DIR/lib/"
-            find "$PROJECT_DIR/lib" -type f -name "*.dart" | head -20
+            echo "=== All Dart files ==="
+            find "$PROJECT_DIR/lib" -type f -name "*.dart"
           else
-            echo "=== No lib/ in repo root — using ZIP's lib/ ==="
+            echo "=== No valid lib/ in repo root — using ZIP's lib/ ==="
           fi
       
       - uses: actions/setup-java@v4
@@ -53,13 +65,12 @@ jobs:
           channel: stable
           cache: true
       
-      - name: Remove incompatible workmanager dependency
+      - name: Remove workmanager
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
-          if [ -f "pubspec.yaml" ]; then
-            sed -i '/workmanager/d' pubspec.yaml
-            echo "=== workmanager removed ==="
-          fi
+          sed -i '/workmanager/d' pubspec.yaml
+          echo "=== pubspec.yaml after removal ==="
+          grep -v "^#" pubspec.yaml | grep -v "^$" | head -30
       
       - name: pub get
         working-directory: ${{ steps.find.outputs.dir }}
@@ -70,24 +81,18 @@ jobs:
         run: dart run build_runner build --delete-conflicting-outputs
         continue-on-error: true
       
-      - name: analyze (non-blocking)
-        working-directory: ${{ steps.find.outputs.dir }}
-        run: flutter analyze --no-fatal-infos || true
-      
-      - name: test (non-blocking)
-        working-directory: ${{ steps.find.outputs.dir }}
-        run: flutter test || true
-      
-      - name: Remove old android folder
+      - name: Remove android
         working-directory: ${{ steps.find.outputs.dir }}
         run: rm -rf android
       
-      - name: Regenerate android (preserve lib/)
+      - name: Regenerate android
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
           flutter create --platforms=android --org com.buddysystem .
+          echo "=== android/ regenerated ==="
+          ls -la android/
       
-      - name: Fix namespace and applicationId
+      - name: Fix build.gradle
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
           FILE="android/app/build.gradle"
@@ -98,6 +103,8 @@ jobs:
             sed -i 's/minSdk .*/minSdk 23/' "$FILE" || true
             sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' "$FILE" || true
             sed -i 's/compileSdk .*/compileSdk 34/' "$FILE" || true
+            echo "=== build.gradle after fix ==="
+            grep -E "namespace|applicationId|minSdk|compileSdk" "$FILE" || true
           fi
           PROPS="android/gradle.properties"
           if [ -f "$PROPS" ]; then
@@ -105,11 +112,15 @@ jobs:
             grep -q "android.enableJetifier" "$PROPS" || echo "android.enableJetifier=true" >> "$PROPS"
           fi
       
-      - name: Clean Gradle
-        working-directory: ${{ steps.find.outputs.dir }}/android
+      - name: Show project structure before build
+        working-directory: ${{ steps.find.outputs.dir }}
         run: |
-          chmod +x gradlew || true
-          ./gradlew clean || true
+          echo "=== lib/ structure ==="
+          find lib -type f -name "*.dart" 2>/dev/null | head -20 || echo "No lib/"
+          echo "=== pubspec.yaml ==="
+          cat pubspec.yaml | head -40
+          echo "=== main.dart ==="
+          cat lib/main.dart 2>/dev/null | head -30 || echo "No main.dart"
       
       - name: Build APK
         working-directory: ${{ steps.find.outputs.dir }}
